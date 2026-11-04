@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+.project-config.json
+.project-proposal.json
+.project-sync.json
+.project-lock/
+PROJECT_STATUS.md
+project-state.json

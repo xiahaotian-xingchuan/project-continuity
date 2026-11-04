@@ -1,0 +1,21 @@
+{
+  "demo": true,
+  "project": {
+    "title": "示例 · 档案检索研究",
+    "revision": 4,
+    "updated": "示例数据",
+    "page": "",
+    "milestones": [
+      {"id":"scope","title":"确定研究范围","criterion":"研究问题及边界经确认","status":"done","evidence":"研究提纲 v1","completedRevision":3},
+      {"id":"pilot","title":"检索试验","criterion":"两轮检索均可复现","status":"active"},
+      {"id":"pilot-1","parent":"pilot","title":"第一轮样本筛选","criterion":"保存检索式、排除理由和样本清单","status":"active"},
+      {"id":"pilot-2","parent":"pilot","title":"第二轮复核","criterion":"逐项复核纳入标准","status":"todo"}
+    ],
+    "progress":{"current":["pilot-1"],"next":["补齐第一轮样本排除理由","将筛选结果交第二轮复核"],"blockers":[],"pending":["确认是否纳入内部简报"]}
+  },
+  "requirements":[
+    {"id":"repro","scope":"pilot","text":"保留每轮检索式与检索日期","source":"已确认的检索方案"},
+    {"id":"trace","scope":null,"text":"每项研究结论附可查来源"}
+  ],
+  "sync":{"status":"local","revision":4}
+}

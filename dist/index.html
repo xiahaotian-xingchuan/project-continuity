@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>长程项目看板</title>
+<style>
+:root{color-scheme:light;font:15px/1.65 system-ui,sans-serif;color:#192a37;background:#f1f5f5}
+body{max-width:850px;margin:auto;padding:clamp(14px,4vw,40px)}
+header{background:#173d41;color:#fff;padding:25px;border-radius:16px;margin-bottom:16px}
+h1{font-size:clamp(24px,5vw,36px);margin:4px 0 8px;line-height:1.25}
+h2{margin:0 0 8px;font-size:17px} p{margin:4px 0}
+small{color:#bfe2d8} .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(250px,100%),1fr));gap:12px}
+section{background:white;padding:17px;border:1px solid #dbe6e5;border-radius:12px;overflow-wrap:anywhere}
+.full{grid-column:1/-1} ul{padding-inline-start:20px;margin:4px 0}
+li{margin:5px 0} .meta{color:#4b6369;font-size:13px}
+.active{color:#176756;font-weight:700}.blocked{color:#9c441f;font-weight:700}
+#error,#storage-message{color:#96360c}
+button,input{font:inherit;border:1px solid #8ba9a4;border-radius:7px;padding:5px 9px;background:white;color:#173d41}
+button{cursor:pointer} button:disabled{cursor:default;opacity:.6}
+button[aria-pressed="true"]{background:#173d41;color:white}
+form,label{display:grid;gap:6px} form{margin-top:12px}
+[hidden]{display:none!important}.actions{display:flex;gap:7px;flex-wrap:wrap;margin:8px 0}
+#storage{margin-bottom:12px} code{overflow-wrap:anywhere} summary{cursor:pointer} a{color:#175956}
+</style>
+<body>
+<header><small id="mode">项目协作 · 进展与交接</small><h1 id="title">长程项目看板</h1><p id="sync">正在读取项目状态…</p></header>
+<section id="storage">
+<h2>保存与同步</h2>
+<div class="actions">
+<button id="local-mode" type="button" disabled>仅本地保存</button>
+<button id="git-mode" type="button" disabled>Git 同步</button>
+<button id="retry" type="button" hidden>立即同步</button>
+</div>
+<p id="storage-note" class="meta"></p>
+<div id="storage-paths" hidden>
+<p>本地目录 · <code id="directory"></code></p>
+<div class="actions"><button id="open-folder" type="button">打开文件夹</button><button id="copy-folder" type="button">复制路径</button></div>
+<div id="repo" hidden>
+<p>Git 仓库 · <code id="remote"></code> · 分支 <code id="branch"></code></p>
+<div class="actions"><a id="open-repo" hidden target="_blank" rel="noopener noreferrer">打开仓库</a><button id="copy-repo" type="button">复制仓库地址</button></div>
+</div>
+</div>
+<form id="git-form" hidden>
+<label>仓库地址 <input id="git-remote" required maxlength="2048" placeholder="https://… 或 SSH 地址"></label>
+<label>目标分支 <input id="git-branch" required maxlength="256" value="main"></label>
+<p class="meta">请使用专用项目仓库。启用后将推送该项目的状态和交接文件。</p>
+<div class="actions"><button type="submit">启用并同步</button><button id="cancel-git" type="button">取消</button></div>
+</form>
+<p id="storage-message" role="status"></p>
+</section>
+<p id="error" role="status"></p>
+<main id="board" class="grid"></main>
+<script>
+const labels = {todo:'未开始',active:'进行中',blocked:'受阻',done:'已完成'};
+const syncing = {local:'仅本地保存',synced:'Git 已同步',pending:'Git 待同步',conflict:'Git 存在冲突',unknown:'同步状态待核对'};
+let rendered = '';
+let latestStorage;
+let writing = false;
+const token = '__BOARD_TOKEN__';
+const get = id => document.getElementById(id);
+function repoLink(remote) {
+  try {
+    const ssh = /^(?:git@)([a-z0-9.-]+):([a-z0-9._/-]+)$/i.exec(remote);
+    const url = new URL(ssh ? 'https://' + ssh[1] + '/' + ssh[2] : remote);
+    if (url.protocol === 'https:' && !url.username && !url.password) {
+      url.pathname = url.pathname.replace(/\.git\/?$/, '');
+      return url.href;
+    }
+  } catch {}
+  return '';
+}
+function renderStorage(data) {
+  latestStorage = data.storage;
+  const config = latestStorage?.git;
+  const enabled = !!latestStorage && !data.demo;
+  get('local-mode').disabled = !enabled || writing;
+  get('git-mode').disabled = !enabled || writing;
+  get('retry').disabled = !enabled || writing;
+  get('local-mode').setAttribute('aria-pressed', String(!config));
+  get('git-mode').setAttribute('aria-pressed', String(!!config));
+  get('retry').hidden = !config;
+  get('storage-paths').hidden = !enabled;
+  get('storage-note').textContent = enabled ? '' : '示例看板。运行插件的本地看板后即可切换保存模式。';
+  get('directory').textContent = latestStorage?.directory || '';
+  get('repo').hidden = !config;
+  get('remote').textContent = config?.remote || '';
+  get('branch').textContent = config?.branch || '';
+  const url = config ? repoLink(config.remote) : '';
+  get('open-repo').hidden = !url;
+  if (url) get('open-repo').href = url;
+  else get('open-repo').removeAttribute('href');
+}
+async function act(path, payload) {
+  if (writing) return false;
+  writing = true;
+  for (const id of ['local-mode', 'git-mode', 'retry']) get(id).disabled = true;
+  get('storage-message').textContent = '正在处理…';
+  try {
+    const response = await fetch(path, {method:'POST', headers:{
+      'Content-Type':'application/json', 'X-Project-Token':token
+    }, body:JSON.stringify(payload)});
+    const result = await response.json();
+    if (!response.ok) throw Error(result.error || '操作失败');
+    get('storage-message').textContent = result.message || (result.opened ? '已打开文件夹' : syncing[result.status]);
+    return true;
+  } catch (error) {
+    get('storage-message').textContent = error.message || '操作失败';
+    return false;
+  } finally {
+    writing = false;
+    for (const id of ['local-mode', 'git-mode', 'retry']) get(id).disabled = false;
+  }
+}
+async function copy(value) {
+  try {
+    await navigator.clipboard.writeText(value);
+    get('storage-message').textContent = '已复制';
+  } catch {
+    get('storage-message').textContent = '请选中上方地址并复制。';
+  }
+}
+get('local-mode').onclick = () => {
+  get('git-form').hidden = true;
+  return act('/storage', {mode:'local'});
+};
+get('git-mode').onclick = () => {
+  get('git-remote').value = latestStorage.git?.remote || '';
+  get('git-branch').value = latestStorage.git?.branch || 'main';
+  get('git-form').hidden = false;
+  get('git-remote').focus();
+};
+get('retry').onclick = () => act('/storage', {mode:'retry'});
+get('cancel-git').onclick = () => { get('git-form').hidden = true; };
+get('git-form').onsubmit = async event => {
+  event.preventDefault();
+  if (await act('/storage', {mode:'git', remote:get('git-remote').value.trim(), branch:get('git-branch').value.trim()})) {
+    get('git-form').hidden = true;
+  }
+};
+get('open-folder').onclick = () => act('/open-folder', {});
+get('copy-folder').onclick = () => copy(latestStorage.directory);
+get('copy-repo').onclick = () => copy(latestStorage.git.remote);
+function element(tag, value, css) {
+  const node = document.createElement(tag);
+  if(value) node.textContent = value;
+  if(css) node.className = css;
+  return node;
+}
+function panel(board, name, values, full) {
+  const box = element('section', '', full ? 'full' : '');
+  box.append(element('h2', name));
+  const list = element('ul');
+  for (const value of values.length ? values : ['暂无']) list.append(element('li', value));
+  box.append(list);
+  board.append(box);
+}
+function render(data) {
+  renderStorage(data);
+  const state = data.project;
+  const progress = state.progress;
+  const nodes = new Map(state.milestones.map(m => [m.id,m]));
+  const byParent = new Map();
+  for (const m of state.milestones) {
+    const group = byParent.get(m.parent || null) || [];
+    group.push(m);
+    byParent.set(m.parent || null,group);
+  }
+  document.getElementById('title').textContent = state.title;
+  document.getElementById('mode').textContent = data.demo ? '虚构示例 · 项目看板' : '本地项目 · 每 3 秒刷新';
+  const sync = data.sync;
+  const status = sync.revision === state.revision ? syncing[sync.status] : '同步状态待核对';
+  document.getElementById('sync').textContent = '修订 ' + state.revision + ' · ' + status + (sync.message ? ' · ' + sync.message : '') + ' · ' + state.updated;
+  const board = document.getElementById('board');
+  const openIds = new Set([...board.querySelectorAll('details[open]')].map(d => d.dataset.id));
+  const first = !board.children.length;
+  const view = document.createDocumentFragment();
+  const plan = element('section','','full');
+  plan.append(element('h2','已确认计划及里程碑'));
+  const activeAncestors = new Set();
+  const current = progress.current.map(id => {
+    const path = [];
+    for (let item = nodes.get(id); item; item = nodes.get(item.parent)) {
+      path.unshift(item.title);
+      activeAncestors.add(item.id);
+    }
+    return path.join(' → ');
+  });
+  plan.append(element('p', '当前阶段 · ' + (current.join('；') || '暂无'), 'active'));
+  const next = element('ul');
+  for (const step of progress.next) next.append(element('li', step));
+  plan.append(element('p', progress.next.length ? '下一步' : '下一步 · 暂无'));
+  if (progress.next.length) plan.append(next);
+  function tree(parent) {
+    const ul = element('ul');
+    for (const m of byParent.get(parent) || []) {
+      const li = element('li');
+      const details = element('details');
+      details.dataset.id = m.id;
+      details.open = openIds.has(m.id) || (first && (!m.parent || activeAncestors.has(m.id)));
+      details.append(element('summary',labels[m.status]+' · '+m.title+(progress.current.includes(m.id)?' · 当前':''),m.status));
+      details.append(element('p','完成标准 · '+m.criterion,'meta'));
+      if(m.evidence) details.append(element('p','依据 · '+m.evidence,'meta'));
+      if(byParent.has(m.id)) details.append(tree(m.id));
+      li.append(details);
+      ul.append(li);
+    }
+    return ul;
+  }
+  plan.append(byParent.has(null) ? tree(null) : element('p','尚无已确认计划'));
+  if(state.page) {
+    const url = /^https?:\/\//i.test(state.page) ? state.page : null;
+    const reference = element(url ? 'a' : 'p',url ? '打开项目总览' : '项目总览 · '+state.page);
+    if(url) reference.href = url;
+    plan.append(reference);
+  }
+  view.append(plan);
+  panel(view, '当前适用要求', data.requirements.map(r => (nodes.get(r.scope)?.title || '全项目') + ' · ' + r.text + (r.source ? ' · ' + r.source : '')), true);
+  panel(view, '阻塞事项', progress.blockers);
+  panel(view, '待确认事项', [...progress.pending, ...(data.pendingProposal ? ['计划提案 ' + data.pendingProposal.id] : [])]);
+  board.replaceChildren(view);
+}
+async function refresh() {
+  const error = document.getElementById('error');
+  try {
+    const response = await fetch('./state.json',{cache:'no-store'});
+    if(!response.ok) throw Error();
+    const raw = await response.text();
+    if(raw !== rendered) {
+      render(JSON.parse(raw));
+      rendered = raw;
+    }
+    error.textContent = '';
+  } catch {
+    error.textContent = '暂时无法读取项目状态。请检查本地看板服务。';
+  }
+  setTimeout(refresh,3000);
+}
+refresh();
+</script>
+</body>
+</html>

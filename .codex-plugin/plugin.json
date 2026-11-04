@@ -1,0 +1,10 @@
+{
+  "name": "project-continuity",
+  "version": "0.1.1",
+  "description": "Maintain confirmed long-running project plans, scoped requirements and portable handoffs.",
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "长程项目看板",
+    "shortDescription": "跟踪已确认的计划、进度和阶段要求"
+  }
+}
