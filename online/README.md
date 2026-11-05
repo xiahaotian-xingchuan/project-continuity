@@ -20,3 +20,17 @@ Both clients download project-state.json and PROJECT_STATUS.md from the same rev
 
 node --test tests/project.test.mjs
 node node_modules/typescript/bin/tsc --noEmit
+
+## Confirmed deliverables 0.3.0
+
+Save and synchronize actual confirmed documents with save_confirmed_deliverable. Each object records its path, title, version, confirmation evidence, SHA-256 and immutable file bytes in private R2 storage. Repeating the same file is idempotent; changed content requires a new version. Download links serve the original bytes. Git synchronization includes these documents in the selected deliverables directory.
+
+Project status snapshots remain available as secondary handoff exports. The primary Save and Synchronize panel lists substantive deliverables.
+
+For a local machine, run bridge/save_deliverables.py with a selected folder and the private site's service credential supplied through CONTINUITY_ACCESS_TOKEN in that machine's environment. The bridge polls confirmed files, validates hashes, atomically saves them, and reports exact local paths. It preserves a manually modified file and reports a conflict. A browser opening the hosted board cannot by itself write an arbitrary computer folder.
+
+Example invocation (after credential configuration):
+
+python3 bridge/save_deliverables.py --site SITE_URL --folder LOCAL_FOLDER
+
+Append --once for a one-time save. Both desktop and web can request the same online save action. Continuous local delivery requires the bridge to run on the target computer. Configure the actual folder and repository only after the user supplies those destinations.

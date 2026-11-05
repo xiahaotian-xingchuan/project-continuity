@@ -1,3 +1,4 @@
+import { localReceipt, relativePath } from "./deliverables.mjs";
 export class ProjectError extends Error {
   constructor(message, status = 400) { super(message); this.status = status; }
 }
@@ -83,10 +84,17 @@ export function transition(previous, action, now = new Date().toISOString()) {
     state.requirements=state.proposal.plan.requirements;
     state.progress.current=state.progress.current.filter(id=>state.milestones.some(m=>m.id===id));
     delete state.proposal;
+  } else if(action.type === "artifact") {
+    relativePath(action.artifact.path);
+    state.artifacts=[...(state.artifacts || []), action.artifact];
+  } else if(action.type === "local_receipt") {
+    localReceipt(state,action);
   } else if(action.type === "storage") {
     ensure(["cloud","git"].includes(action.mode),"无效的保存模式");
     if(action.mode==="git") ensure(/^[\w.-]+\/[\w.-]+$/.test(action.repository),"仓库格式应为 owner/repo");
-    state.storage={mode:action.mode,repository:action.repository || "", branch:action.branch || "main",status:action.mode==="git"?"pending":"cloud"};
+    state.storage={mode:action.mode,repository:action.repository || "",branch:action.branch || "main",
+      folder:String(action.folder || ""),gitDirectory:action.gitDirectory ? relativePath(action.gitDirectory) : "成果文件",
+      status:action.mode==="git"?"pending":"cloud"};
   } else throw new ProjectError("不支持的更新类型");
   validate(state);
   state.revision++;
