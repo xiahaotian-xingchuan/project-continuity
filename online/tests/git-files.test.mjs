@@ -17,13 +17,15 @@ test('Git commits actual deliverable bytes into selected directory',async()=>{
  try {
    const bytes=new Uint8Array([80,75,0,255,100]);
    const state={id:'project',revision:9,storage:{mode:'git',repository:'owner/repo',branch:'main',gitDirectory:'确认成果'},
-     artifacts:[{id:'file',path:'治理/总纲.docx',key:'blob-key',sha256:'hash'}]};
+     artifacts:[{id:'file',path:'治理/总纲.docx',key:'blob-key',sha256:'hash',provenanceText:'{"reviewStatus":"pending"}'}]};
    const receipt=await pushProject(state,'test-token',{get:async()=>({arrayBuffer:async()=>bytes.buffer})});
    const blob=requests.find(r=>r.url.endsWith('/git/blobs')).body;
    assert.deepEqual(Uint8Array.from(atob(blob.content),c=>c.charCodeAt(0)),bytes);
    const tree=requests.find(r=>r.url.endsWith('/git/trees')).body;
-   assert.equal(tree.tree.length,1);
-   assert.equal(tree.tree[0].path,'确认成果/治理/总纲.docx');
+   assert.equal(tree.tree.length,2);
+   assert.equal(tree.tree[1].path,'确认成果/治理/总纲.docx');
    assert.equal(receipt.artifacts[0].id,'file');
+   assert.equal(tree.tree[0].path,'确认成果/治理/总纲.docx.provenance.json');
+   assert.equal(requests.filter(r=>r.url.endsWith('/git/blobs'))[1].body.content,'{"reviewStatus":"pending"}');
  } finally {global.fetch=original;}
 });
