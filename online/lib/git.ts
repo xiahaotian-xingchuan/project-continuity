@@ -25,6 +25,10 @@ export async function pushProject(state:any, token:string, bucket:R2Bucket) {
     let binary="";
     for(let i=0;i<bytes.length;i+=8192) binary+=String.fromCharCode(...bytes.subarray(i,i+8192));
     const blob=await invoke("/git/blobs","POST",{content:btoa(binary),encoding:"base64"});
+    if(file.provenanceText) {
+      const metadata=await invoke("/git/blobs","POST",{content:file.provenanceText,encoding:"utf-8"});
+      tree.push({path:directory+"/"+relativePath(file.path+".provenance.json"),mode:"100644",type:"blob",sha:metadata.sha});
+    }
     tree.push({path:directory+"/"+relativePath(file.path),mode:"100644",type:"blob",sha:blob.sha});
   }
   const object=await invoke("/git/trees","POST",{base_tree:baseCommit.tree.sha,tree});
