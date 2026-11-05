@@ -1,6 +1,7 @@
 import { env } from "cloudflare:workers";
 import { ProjectError, validate, transition, requirements } from "./project.mjs";
 import { pushProject } from "./git";
+import { archiveRoute, provenanceRecord } from "./archive.mjs";
 import { decodeFile } from "./deliverables.mjs";
 export function bucket() { return (env as unknown as {BUCKET:R2Bucket}).BUCKET; }
 function db() { return (env as unknown as {DB:D1Database}).DB; }
@@ -14,7 +15,8 @@ export function view(state:any) {
     sync:{status:state.storage?.status || "cloud",revision:state.revision},
     storage:{cloud:true,git:state.storage?.mode==="git"?{remote:"https://github.com/"+state.storage.repository,branch:state.storage.branch}:null}};
 }
-export async function apply(action:any): Promise<any> {
+export async function apply(action:any, internal=false): Promise<any> {
+  if(action.type==="artifact" && !internal) throw new ProjectError("请通过成果保存工具提交文件原文");
   const previous=await load();
   if(action.type==="initialize") {
     if(previous) throw new ProjectError("项目已经存在",409);
@@ -28,7 +30,10 @@ export async function apply(action:any): Promise<any> {
   if(!previous) throw new ProjectError("项目尚未初始化",404);
   if(action.type==="save_artifact") {
     if(action.revision!==previous.revision) throw new ProjectError("项目已更新，请重新读取后保存成果",409);
-    const decoded=await decodeFile(action);
+    const routed=archiveRoute(previous,action);
+    const decoded=await decodeFile({...action,path:routed.path,confirmation:action.kind==="evidence"?"依据归档，待审查":action.confirmation});
+    const provenance=provenanceRecord(previous,action,routed,decoded.sha256);
+    action={...action,path:routed.path};
     const existing=(previous.artifacts || []).find((a:any)=>a.path===action.path && a.version===action.version && a.sha256===decoded.sha256);
     if(existing) return {...view(previous),savedArtifact:existing};
     if((previous.artifacts || []).some((a:any)=>a.path===action.path && a.version===action.version))
@@ -36,9 +41,10 @@ export async function apply(action:any): Promise<any> {
     const id=crypto.randomUUID(), key="deliverables/"+id;
     await bucket().put(key,decoded.bytes,{httpMetadata:{contentType:"application/octet-stream"}});
     const artifact={id,key,path:action.path,title:action.title,version:action.version,confirmation:action.confirmation,
-      source:String(action.source || ""),sha256:decoded.sha256,size:decoded.bytes.length,confirmedAt:new Date().toISOString()};
+      archive:routed.archive,provenance,provenanceText:JSON.stringify(provenance,null,2),
+      source:provenance.source,sha256:decoded.sha256,size:decoded.bytes.length,recordedAt:provenance.recordedAt,confirmedAt:action.kind==="evidence"?null:provenance.recordedAt};
     try {
-      const result=await apply({type:"artifact",revision:action.revision,artifact});
+      const result=await apply({type:"artifact",revision:action.revision,artifact},true);
       return {...result,savedArtifact:artifact};
     } catch(error) { await bucket().delete(key); throw error; }
   }
