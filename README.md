@@ -72,3 +72,9 @@ python3 "$SCRIPT" "$PROJECT" configure-local
 ```sh
 python3 -m unittest discover -s tests -v
 ```
+
+## 在线版 0.2.0
+
+在线版将项目保存在私有 Sites 数据库中，网页和桌面调用同一套工具。服务端和界面实现位于 online/，基于 Sites Vinext starter。部署后会生成个人在线插件，提供打开看板、读取项目和更新项目三个工具。通过项目入口打开实时界面。
+
+已验证在线插件读写、双浏览器窗口自动刷新、修订冲突保护。桌面客户端尚待实机验证。在线 Git 需要在站点运行时配置 GITHUB_TOKEN，文件导出已实现。正式插件市场送审仍需发布主体认证。
