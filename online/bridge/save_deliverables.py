@@ -52,6 +52,18 @@ def save_one(root, artifact, data, receipts):
         current = hashlib.sha256(target.read_bytes()).hexdigest()
         if current != artifact["sha256"] and current != receipts.get(artifact["path"]):
             return "conflict", target
+    metadata = artifact.get("provenanceText")
+    if metadata:
+        raw = metadata.encode("utf-8")
+        metadata_path = artifact["path"] + ".provenance.json"
+        metadata_target = target_path(root, metadata_path)
+        digest = hashlib.sha256(raw).hexdigest()
+        if metadata_target.exists():
+            current = hashlib.sha256(metadata_target.read_bytes()).hexdigest()
+            if current not in (digest, receipts.get(metadata_path)):
+                return "conflict", metadata_target
+        atomic_write(metadata_target, raw)
+        receipts[metadata_path] = digest
     atomic_write(target, data)
     receipts[artifact["path"]] = artifact["sha256"]
     return "saved", target
@@ -68,6 +80,9 @@ def run_once(site, token, root):
         target = target_path(root, artifact["path"])
         if (artifact.get("local", {}).get("status") == "saved"
                 and artifact["local"].get("path") == str(target)
+                and (not artifact.get("provenanceText") or (
+                    target_path(root, artifact["path"] + ".provenance.json").exists()
+                    and target_path(root, artifact["path"] + ".provenance.json").read_bytes() == artifact["provenanceText"].encode("utf-8")))
                 and target.exists()
                 and hashlib.sha256(target.read_bytes()).hexdigest() == artifact["sha256"]):
             continue
