@@ -31,3 +31,17 @@ class BridgeTests(unittest.TestCase):
                     bridge.target_path(root, relative)
             with self.assertRaises(ValueError):
                 bridge.save_one(root, {"path": "file.docx", "sha256": "wrong"}, b"bytes", {})
+
+    def test_nested_provenance_and_conflict(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            content = b"evidence"
+            artifact = {"path": "执行区域/P1/核心知识点K01/假设H01/假设依据E01/v1/source.txt", "sha256": hashlib.sha256(content).hexdigest(), "provenanceText": '{"reviewStatus":"pending"}'}
+            receipts = {}
+            status, target = bridge.save_one(root, artifact, content, receipts)
+            self.assertEqual(status, "saved")
+            metadata = root / (artifact["path"] + ".provenance.json")
+            self.assertEqual(metadata.read_text(), artifact["provenanceText"])
+            metadata.write_text("manual review")
+            self.assertEqual(bridge.save_one(root, artifact, content, receipts)[0], "conflict")
+            self.assertEqual(metadata.read_text(), "manual review")
