@@ -1,8 +1,10 @@
 import { load, view, apply } from "@/lib/store";
 export const dynamic="force-dynamic";
+const routing={milestoneId:{type:"string",description:"Confirmed execution milestone ID; required when multiple milestones are current."},knowledge:{type:"string",description:"Stable knowledge identifier and short title"},hypothesis:{type:"string",description:"Stable hypothesis identifier and short title"},evidence:{type:"string",description:"Stable evidence identifier and short title"}};
 const tools=[
- {name:"save_confirmed_deliverable",description:"Save the actual bytes of an explicitly confirmed substantive project deliverable, such as a charter, governance rules or approved report. Provide file path relative to the project deliverables folder, version, confirmation evidence and base64 file bytes. This archives the file, lists its download link and attempts configured Git synchronization. Read the current project revision first. Do not replace substantive files with project status summaries.",inputSchema:{type:"object",properties:{
- revision:{type:"integer"},path:{type:"string"},title:{type:"string"},version:{type:"string"},
+ {name:"save_hypothesis_evidence",description:"Archive actual hypothesis evidence bytes under the confirmed execution plan / core knowledge / hypothesis / evidence hierarchy. Use stable identifiers. Automatically includes a provenance sidecar in local and Git copies. Evidence remains pending review and does not confirm a hypothesis. Supply original source, exact locator, producing task or run ID, retrieval timestamp and relation; do not fabricate missing provenance. Read the project first. This does not start scheduled work.",inputSchema:{type:"object",properties:{...routing,revision:{type:"integer"},path:{type:"string",description:"Original filename"},title:{type:"string"},version:{type:"string"},base64:{type:"string"},provenance:{type:"object",properties:{source:{type:"string"},locator:{type:"string"},task:{type:"string"},retrievedAt:{type:"string"},relation:{type:"string",enum:["support","counter","boundary","unclassified"]}},required:["source","locator","task","retrievedAt","relation"]}},required:["revision","milestoneId","knowledge","hypothesis","evidence","path","title","version","base64","provenance"]}},
+ {name:"save_confirmed_deliverable",description:"Save the actual bytes of an explicitly confirmed substantive project deliverable, such as a charter, governance rules or approved report. Provide the original filename and milestoneId from the confirmed plan; folders are created automatically with version history and a provenance sidecar. Provide version, confirmation evidence and base64 file bytes. This archives the file, lists its download link and attempts configured Git synchronization. Read the current project revision first. Do not replace substantive files with project status summaries.",inputSchema:{type:"object",properties:{
+ ...routing,revision:{type:"integer"},path:{type:"string"},title:{type:"string"},version:{type:"string"},
  confirmation:{type:"string"},source:{type:"string"},base64:{type:"string"}},required:["revision","path","title","version","confirmation","base64"]}},
  {name:"report_deliverable_local_save",description:"Report a verified local save of an actual deliverable. Only report saved after writing the bytes and checking SHA-256. A remote server cannot itself write a user's computer folder.",inputSchema:{type:"object",properties:{revision:{type:"integer"},artifactId:{type:"string"},sha256:{type:"string"},status:{type:"string",enum:["saved","conflict","failed"]},path:{type:"string"}},required:["revision","artifactId","sha256","status","path"]}},
  {name:"open_project_board",description:"Open the live interactive project board. Return this URL to the user instead of recreating the board as a Markdown table.",inputSchema:{type:"object",properties:{},additionalProperties:false}},
@@ -14,13 +16,14 @@ export async function POST(request:Request) {
   let result:any;
   try {
     if(rpc.method==="server/discover") result={supportedVersions:["2026-07-28"],capabilities:{tools:{}}};
-    else if(rpc.method==="initialize") result={protocolVersion:"2026-07-28",capabilities:{tools:{}},serverInfo:{name:"project-continuity",version:"0.2.0"}};
+    else if(rpc.method==="initialize") result={protocolVersion:"2026-07-28",capabilities:{tools:{}},serverInfo:{name:"project-continuity",version:"0.4.0"}};
     else if(rpc.method==="tools/list") result={tools};
     else if(rpc.method==="tools/call") {
       const name=rpc.params?.name;
       let data;
       if(name==="open_project_board") data={url:new URL("/",request.url).href};
-      else if(name==="save_confirmed_deliverable") data=await apply({...rpc.params.arguments,type:"save_artifact"});
+      else if(name==="save_hypothesis_evidence") data=await apply({...rpc.params.arguments,type:"save_artifact",kind:"evidence"});
+      else if(name==="save_confirmed_deliverable") data=await apply({...rpc.params.arguments,type:"save_artifact",kind:"formal"});
       else if(name==="report_deliverable_local_save") data=await apply({...rpc.params.arguments,type:"local_receipt"});
       else if(name==="read_project") data=view(await load());
       else if(name==="update_project") data=await apply(rpc.params.arguments.action);
