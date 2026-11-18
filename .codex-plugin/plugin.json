@@ -1,7 +1,7 @@
 {
   "name": "project-continuity",
-  "version": "0.3.0",
-  "description": "Maintain confirmed long-running project plans, scoped requirements and portable handoffs.",
+  "version": "0.4.0",
+  "description": "Maintain confirmed project plans and handoffs; online edition archives deliverables and hypothesis evidence with plan-based folders and provenance.",
   "skills": "./skills/",
   "interface": {
     "displayName": "长程项目看板",
